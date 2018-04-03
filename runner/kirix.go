@@ -10,6 +10,14 @@ type Source interface {
 	GetWork() (string, error)
 }
 
+type Provider interface {
+	CreateComputeInstance(name string, work string) error
+
+	SendWork(name string) error
+
+	DeleteComputeInstance(name string) error
+}
+
 type Runner struct {
 	Sources []Source
 }
