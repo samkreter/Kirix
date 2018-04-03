@@ -70,12 +70,15 @@ func NewACIProvider(config string, operatingSystem string) (*ACIProvider, error)
 
 func (p *ACIProvider) CreateComputeInstance(name string, work string) error {
 	//TODO: Get default container group, set work as ENV
-	containerGroup := aci.ContainerGroup{}
+	containerGroup, err := p.GetSingleImageContainerGroup(work)
+	if err != nil {
+		return err
+	}
 
-	_, err := p.aciClient.CreateContainerGroup(
+	_, err = p.aciClient.CreateContainerGroup(
 		p.resourceGroup,
 		name,
-		containerGroup,
+		*containerGroup,
 	)
 
 	return err
