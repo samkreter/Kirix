@@ -24,7 +24,7 @@ type ACIProvider struct {
 }
 
 // NewACIProvider creates a new ACIProvider.
-func NewACIProvider(config string, operatingSystem string) (*ACIProvider, error) {
+func NewACIProvider(config string, operatingSystem string, image string) (*ACIProvider, error) {
 	var p ACIProvider
 	var err error
 
@@ -32,6 +32,8 @@ func NewACIProvider(config string, operatingSystem string) (*ACIProvider, error)
 	if err != nil {
 		return nil, err
 	}
+
+	p.image = image
 
 	if config != "" {
 		f, err := os.Open(config)
@@ -112,22 +114,32 @@ func (p *ACIProvider) GetSingleImageContainerGroup(work string) (*aci.ContainerG
 					Value: work,
 				},
 			},
+			Resources: aci.ResourceRequirements{
+				Limits: aci.ResourceLimits{
+					CPU:        1,
+					MemoryInGB: 1,
+				},
+				Requests: aci.ResourceRequests{
+					CPU:        1,
+					MemoryInGB: 1,
+				},
+			},
 		},
 	}
 
 	containerGroup.ContainerGroupProperties.Containers = []aci.Container{container}
 
-	ports := []aci.Port{
-		aci.Port{
-			Port:     80,
-			Protocol: aci.ContainerGroupNetworkProtocol("TCP"),
-		},
-	}
+	// ports := []aci.Port{
+	// 	aci.Port{
+	// 		Port:     80,
+	// 		Protocol: aci.ContainerGroupNetworkProtocol("TCP"),
+	// 	},
+	// }
 
-	containerGroup.ContainerGroupProperties.IPAddress = &aci.IPAddress{
-		Ports: ports,
-		Type:  "Public",
-	}
+	// containerGroup.ContainerGroupProperties.IPAddress = &aci.IPAddress{
+	// 	Ports: ports,
+	// 	Type:  "Public",
+	// }
 
 	return &containerGroup, nil
 }
