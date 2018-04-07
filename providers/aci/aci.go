@@ -3,6 +3,7 @@ package aci
 /* TODO:
 - Add passing in command
 - Add image pull secrets
+- Update work with put, check status of container for work finished
 */
 
 import (
@@ -11,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	client "github.com/virtual-kubelet/virtual-kubelet/providers/azure/client"
@@ -23,12 +25,34 @@ const (
 )
 
 type ACIProvider struct {
-	aciClient      *aci.Client
-	workerInstance *aci.ContainerGroup
-	resourceGroup  string
-	cpu            string
-	memory         string
-	cinstances     string
+	aciClient       *aci.Client
+	workerInstance  *aci.ContainerGroup
+	operatingSystem string
+	region          string
+	resourceGroup   string
+	cpu             string
+	memory          string
+	cinstances      string
+}
+
+func isValidACIRegion(region string) bool {
+	regionLower := strings.ToLower(region)
+	regionTrimmed := strings.Replace(regionLower, " ", "", -1)
+
+	for _, validRegion := range validAciRegions {
+		if regionTrimmed == validRegion {
+			return true
+		}
+	}
+
+	return false
+}
+
+var validAciRegions = []string{
+	"westeurope",
+	"westus",
+	"eastus",
+	"southeastasia",
 }
 
 // NewACIProvider creates a new ACIProvider.
@@ -71,6 +95,19 @@ func NewACIProvider(config string, operatingSystem string, image string, deploym
 		return nil, errors.New("Resource group can not be empty please set ACI_RESOURCE_GROUP")
 	}
 
+	if r := os.Getenv("ACI_REGION"); r != "" {
+		p.region = r
+	}
+	if p.region == "" {
+		return nil, errors.New("Region can not be empty please set ACI_REGION")
+	}
+	if r := p.region; !isValidACIRegion(r) {
+		unsupportedRegionMessage := fmt.Sprintf("Region %s is invalid. Current supported regions are: %s",
+			r, strings.Join(validAciRegions, ", "))
+
+		return nil, errors.New(unsupportedRegionMessage)
+	}
+
 	region := os.Getenv("ACI_REGION")
 	if region == "" {
 		return nil, errors.New("Region can not be empty please set ACI_REGION")
@@ -87,6 +124,22 @@ func NewACIProvider(config string, operatingSystem string, image string, deploym
 			return nil, err
 		}
 		p.workerInstance = cg
+	} else if deploymentFile != "" {
+		return nil, errors.New("Currently do not support K8s deployment files.")
+		// deployment, err := GetDeploymentFromFile(deploymentFile)
+		// if err != nil{
+		// 	return nil, err
+		// }
+		// cg, err := GetACIFromK8sPod(pod, region, operatingSystem)
+		// p.workerInstance = cg
+
+		// // Make sure the KIRIX_WORK env varible was added to one container
+		// err = p.AddWork("")
+		// if err != nil {
+		// 	return nil, err
+		// }
+	} else {
+		return nil, errors.New("Must supply either an image or Kubernetes deployment spec.")
 	}
 
 	return &p, err
@@ -220,22 +273,22 @@ func (p *ACIProvider) GetCurrentComputeInstances() ([]aci.ContainerGroup, error)
 	return cgs.Value, nil
 }
 
-func (p *ACIProvider) GetACIFromK8sPod(pod *v1.Pod) error {
+func GetACIFromK8sPod(pod *v1.Pod, region string, operatingSystem string) (*aci.ContainerGroup, error) {
 	var containerGroup aci.ContainerGroup
-	containerGroup.Location = p.region
+	containerGroup.Location = region
 	containerGroup.RestartPolicy = aci.ContainerGroupRestartPolicy(pod.Spec.RestartPolicy)
-	containerGroup.ContainerGroupProperties.OsType = aci.OperatingSystemTypes(p.operatingSystem)
+	containerGroup.ContainerGroupProperties.OsType = aci.OperatingSystemTypes(operatingSystem)
 
 	// get containers
-	containers, err := p.getContainers(pod)
+	containers, err := getContainers(pod)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// get volumes
-	volumes, err := p.getVolumes(pod)
+	volumes, err := getVolumes(pod)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// assign all the things
 	containerGroup.ContainerGroupProperties.Containers = containers
@@ -274,16 +327,10 @@ func (p *ACIProvider) GetACIFromK8sPod(pod *v1.Pod) error {
 		"CreationTimestamp": podCreationTimestamp,
 	}
 
-	_, err = p.aciClient.CreateContainerGroup(
-		p.resourceGroup,
-		fmt.Sprintf("%s-%s", pod.Namespace, pod.Name),
-		containerGroup,
-	)
-
-	return err
+	return &containerGroup, err
 }
 
-func (p *ACIProvider) getVolumes(pod *v1.Pod) ([]aci.Volume, error) {
+func getVolumes(pod *v1.Pod) ([]aci.Volume, error) {
 	volumes := make([]aci.Volume, 0, len(pod.Spec.Volumes))
 	for _, v := range pod.Spec.Volumes {
 		// Handle the case for the EmptyDir.
@@ -312,7 +359,7 @@ func (p *ACIProvider) getVolumes(pod *v1.Pod) ([]aci.Volume, error) {
 	return volumes, nil
 }
 
-func (p *ACIProvider) getContainers(pod *v1.Pod) ([]aci.Container, error) {
+func getContainers(pod *v1.Pod) ([]aci.Container, error) {
 	containers := make([]aci.Container, 0, len(pod.Spec.Containers))
 	for _, container := range pod.Spec.Containers {
 		c := aci.Container{
