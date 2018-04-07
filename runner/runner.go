@@ -67,17 +67,16 @@ func New(sources []string, sourceConfig string, provider string) (*Runner, error
 func (r *Runner) Run() error {
 	fmt.Println("running")
 
-	
 	//Created
-	err := r.Provider.CreateComputeInstance("sam-test-1", "testwork")
-	if err != nil {
-		log.Fatal("Error in creation: ", err)
-	}
-
-	//Delete
-	// err := r.Provider.DeleteComputeInstance("sam-test-1")
+	// err := r.Provider.CreateComputeInstance("sam-test-1", "testwork")
 	// if err != nil {
 	// 	log.Fatal("Error in creation: ", err)
 	// }
+
+	//Delete
+	err := r.Provider.DeleteComputeInstance("sam-test-1")
+	if err != nil {
+		log.Fatal("Error in creation: ", err)
+	}
 	return fmt.Errorf("Runner not implemneted.")
 }

@@ -10,12 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	client "github.com/virtual-kubelet/virtual-kubelet/providers/azure/client"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/azure/client/aci"
 	"k8s.io/api/core/v1"
 )
@@ -60,18 +58,7 @@ func NewACIProvider(config string, operatingSystem string, image string, deploym
 	var p ACIProvider
 	var err error
 
-	var azAuth *client.Authentication
-
-	if authFilepath := os.Getenv("AZURE_AUTH_LOCATION"); authFilepath != "" {
-		auth, err := client.NewAuthenticationFromFile(authFilepath)
-		if err != nil {
-			return nil, err
-		}
-
-		azAuth = auth
-	}
-
-	p.aciClient, err = aci.NewClient(azAuth)
+	p.aciClient, err = aci.NewClient()
 	if err != nil {
 		return nil, err
 	}
@@ -230,11 +217,8 @@ func GetSingleImageContainerGroup(image string, region string, operatingSystem s
 }
 
 func (p *ACIProvider) GetComputeInstance(namespace, name string) (*aci.ContainerGroup, error) {
-	cg, err, status := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, name))
+	cg, err := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, name))
 	if err != nil {
-		if *status == http.StatusNotFound {
-			return nil, nil
-		}
 		return nil, err
 	}
 
@@ -243,7 +227,7 @@ func (p *ACIProvider) GetComputeInstance(namespace, name string) (*aci.Container
 
 func (p *ACIProvider) GetContainerLogs(namespace, podName, containerName string, tail int) (string, error) {
 	logContent := ""
-	cg, err, _ := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, podName))
+	cg, err := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, podName))
 	if err != nil {
 		return logContent, err
 	}
