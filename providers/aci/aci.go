@@ -1,6 +1,7 @@
 package aci
 
 /* TODO:
+- Add passing in command
 - Add image pull secrets
 */
 
@@ -17,20 +18,21 @@ import (
 	"k8s.io/api/core/v1"
 )
 
+const (
+	WorkEnvVarName = "KIRIX_WORK"
+)
+
 type ACIProvider struct {
-	aciClient       *aci.Client
-	image           string
-	command         []string
-	resourceGroup   string
-	region          string
-	operatingSystem string
-	cpu             string
-	memory          string
-	cinstances      string
+	aciClient      *aci.Client
+	workerInstance *aci.ContainerGroup
+	resourceGroup  string
+	cpu            string
+	memory         string
+	cinstances     string
 }
 
 // NewACIProvider creates a new ACIProvider.
-func NewACIProvider(config string, operatingSystem string, image string) (*ACIProvider, error) {
+func NewACIProvider(config string, operatingSystem string, image string, deploymentFile string) (*ACIProvider, error) {
 	var p ACIProvider
 	var err error
 
@@ -49,8 +51,6 @@ func NewACIProvider(config string, operatingSystem string, image string) (*ACIPr
 	if err != nil {
 		return nil, err
 	}
-
-	p.image = image
 
 	if config != "" {
 		f, err := os.Open(config)
@@ -71,10 +71,8 @@ func NewACIProvider(config string, operatingSystem string, image string) (*ACIPr
 		return nil, errors.New("Resource group can not be empty please set ACI_RESOURCE_GROUP")
 	}
 
-	if r := os.Getenv("ACI_REGION"); r != "" {
-		p.region = r
-	}
-	if p.region == "" {
+	region := os.Getenv("ACI_REGION")
+	if region == "" {
 		return nil, errors.New("Region can not be empty please set ACI_REGION")
 	}
 
@@ -82,22 +80,27 @@ func NewACIProvider(config string, operatingSystem string, image string) (*ACIPr
 	p.memory = "100Gi"
 	p.cinstances = "20"
 
-	p.operatingSystem = operatingSystem
+	//If a single image is given, create a basic worker instance
+	if image != "" {
+		cg, err := GetSingleImageContainerGroup(image, region, operatingSystem)
+		if err != nil {
+			return nil, err
+		}
+		p.workerInstance = cg
+	}
 
 	return &p, err
 }
 
 func (p *ACIProvider) CreateComputeInstance(name string, work string) error {
-	//TODO: Get default container group, set work as ENV
-	containerGroup, err := p.GetSingleImageContainerGroup(work)
-	if err != nil {
-		return err
-	}
+	fmt.Println("B: ", p.workerInstance.Containers[0].EnvironmentVariables)
+	p.AddWork(work)
+	fmt.Println("A: ", p.workerInstance.Containers[0].EnvironmentVariables)
 
-	_, err = p.aciClient.CreateContainerGroup(
+	_, err := p.aciClient.CreateContainerGroup(
 		p.resourceGroup,
 		name,
-		*containerGroup,
+		*p.workerInstance,
 	)
 
 	return err
@@ -111,26 +114,38 @@ func (p *ACIProvider) SendWork(name string) error {
 	return fmt.Errorf("Not Implemented")
 }
 
-func (p *ACIProvider) GetSingleImageContainerGroup(work string) (*aci.ContainerGroup, error) {
+func (p *ACIProvider) AddWork(work string) error {
+	// Kirix Work Env is already set up
+	for idx, container := range p.workerInstance.Containers {
+		for envIdx, envVar := range container.EnvironmentVariables {
+			if envVar.Name == WorkEnvVarName {
+				p.workerInstance.Containers[idx].EnvironmentVariables[envIdx].Value = work
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("Could not find Env Variable: %s to add work.", WorkEnvVarName)
+}
+
+func GetSingleImageContainerGroup(image string, region string, operatingSystem string) (*aci.ContainerGroup, error) {
 	var containerGroup aci.ContainerGroup
-	containerGroup.Location = p.region
+	containerGroup.Location = region
 	containerGroup.RestartPolicy = aci.ContainerGroupRestartPolicy("Always")
-	containerGroup.ContainerGroupProperties.OsType = aci.OperatingSystemTypes(p.operatingSystem)
+	containerGroup.ContainerGroupProperties.OsType = aci.OperatingSystemTypes(operatingSystem)
 
 	// TODO: Allow private repos
 
 	container := aci.Container{
 		Name: "worker-container",
 		ContainerProperties: aci.ContainerProperties{
-			Image:   p.image,
-			Command: p.command,
-			Ports:   make([]aci.ContainerPort, 0),
+			Image: image,
+			Ports: make([]aci.ContainerPort, 0),
 			EnvironmentVariables: []aci.EnvironmentVariable{
 				aci.EnvironmentVariable{
-					Name:  "KIRIX_WORK",
-					Value: work,
-				},
-			},
+					Name:  WorkEnvVarName,
+					Value: "",
+				}},
 			Resources: aci.ResourceRequirements{
 				Limits: aci.ResourceLimits{
 					CPU:        1,

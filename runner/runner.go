@@ -50,7 +50,7 @@ func New(sources []string, sourceConfig string, provider string) (*Runner, error
 	switch provider {
 	case "aci":
 		// TODO: set up config
-		p, err := aci.NewACIProvider("", "Linux", "nginx")
+		p, err := aci.NewACIProvider("", "Linux", "nginx", "")
 		if err != nil {
 			return &Runner{}, err
 		}
@@ -67,16 +67,17 @@ func New(sources []string, sourceConfig string, provider string) (*Runner, error
 func (r *Runner) Run() error {
 	fmt.Println("running")
 
+	
 	//Created
-	// err := r.Provider.CreateComputeInstance("sam-test-1", "testwork")
-	// if err != nil {
-	// 	log.Fatal("Error in creation: ", err)
-	// }
-
-	//Delete
-	err := r.Provider.DeleteComputeInstance("sam-test-1")
+	err := r.Provider.CreateComputeInstance("sam-test-1", "testwork")
 	if err != nil {
 		log.Fatal("Error in creation: ", err)
 	}
+
+	//Delete
+	// err := r.Provider.DeleteComputeInstance("sam-test-1")
+	// if err != nil {
+	// 	log.Fatal("Error in creation: ", err)
+	// }
 	return fmt.Errorf("Runner not implemneted.")
 }
