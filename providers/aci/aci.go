@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	client "github.com/virtual-kubelet/virtual-kubelet/providers/azure/client"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/azure/client/aci"
 	"k8s.io/api/core/v1"
 )
@@ -44,7 +45,7 @@ func NewACIProvider(config string, operatingSystem string, image string) (*ACIPr
 		azAuth = auth
 	}
 
-	p.aciClient, err = aci.NewClient()
+	p.aciClient, err = aci.NewClient(azAuth)
 	if err != nil {
 		return nil, err
 	}
