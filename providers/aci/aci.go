@@ -1,5 +1,9 @@
 package aci
 
+/* TODO:
+- Add image pull secrets
+*/
+
 import (
 	"errors"
 	"fmt"
@@ -9,6 +13,7 @@ import (
 	"time"
 
 	"github.com/virtual-kubelet/virtual-kubelet/providers/azure/client/aci"
+	"k8s.io/api/core/v1"
 )
 
 type ACIProvider struct {
@@ -27,6 +32,17 @@ type ACIProvider struct {
 func NewACIProvider(config string, operatingSystem string, image string) (*ACIProvider, error) {
 	var p ACIProvider
 	var err error
+
+	var azAuth *client.Authentication
+
+	if authFilepath := os.Getenv("AZURE_AUTH_LOCATION"); authFilepath != "" {
+		auth, err := client.NewAuthenticationFromFile(authFilepath)
+		if err != nil {
+			return nil, err
+		}
+
+		azAuth = auth
+	}
 
 	p.aciClient, err = aci.NewClient()
 	if err != nil {
@@ -186,4 +202,162 @@ func (p *ACIProvider) GetCurrentComputeInstances() ([]aci.ContainerGroup, error)
 	}
 
 	return cgs.Value, nil
+}
+
+func (p *ACIProvider) GetACIFromK8sPod(pod *v1.Pod) error {
+	var containerGroup aci.ContainerGroup
+	containerGroup.Location = p.region
+	containerGroup.RestartPolicy = aci.ContainerGroupRestartPolicy(pod.Spec.RestartPolicy)
+	containerGroup.ContainerGroupProperties.OsType = aci.OperatingSystemTypes(p.operatingSystem)
+
+	// get containers
+	containers, err := p.getContainers(pod)
+	if err != nil {
+		return err
+	}
+
+	// get volumes
+	volumes, err := p.getVolumes(pod)
+	if err != nil {
+		return err
+	}
+	// assign all the things
+	containerGroup.ContainerGroupProperties.Containers = containers
+	containerGroup.ContainerGroupProperties.Volumes = volumes
+
+	// create ipaddress if containerPort is used
+	count := 0
+	for _, container := range containers {
+		count = count + len(container.Ports)
+	}
+	ports := make([]aci.Port, 0, count)
+	for _, container := range containers {
+		for _, containerPort := range container.Ports {
+
+			ports = append(ports, aci.Port{
+				Port:     containerPort.Port,
+				Protocol: aci.ContainerGroupNetworkProtocol("TCP"),
+			})
+		}
+	}
+	if len(ports) > 0 {
+		containerGroup.ContainerGroupProperties.IPAddress = &aci.IPAddress{
+			Ports: ports,
+			Type:  "Public",
+		}
+	}
+
+	podUID := string(pod.UID)
+	podCreationTimestamp := pod.CreationTimestamp.String()
+	containerGroup.Tags = map[string]string{
+		"PodName":           pod.Name,
+		"ClusterName":       pod.ClusterName,
+		"NodeName":          pod.Spec.NodeName,
+		"Namespace":         pod.Namespace,
+		"UID":               podUID,
+		"CreationTimestamp": podCreationTimestamp,
+	}
+
+	_, err = p.aciClient.CreateContainerGroup(
+		p.resourceGroup,
+		fmt.Sprintf("%s-%s", pod.Namespace, pod.Name),
+		containerGroup,
+	)
+
+	return err
+}
+
+func (p *ACIProvider) getVolumes(pod *v1.Pod) ([]aci.Volume, error) {
+	volumes := make([]aci.Volume, 0, len(pod.Spec.Volumes))
+	for _, v := range pod.Spec.Volumes {
+		// Handle the case for the EmptyDir.
+		if v.EmptyDir != nil {
+			volumes = append(volumes, aci.Volume{
+				Name:     v.Name,
+				EmptyDir: map[string]interface{}{},
+			})
+			continue
+		}
+
+		// Handle the case for GitRepo volume.
+		if v.GitRepo != nil {
+			volumes = append(volumes, aci.Volume{
+				Name: v.Name,
+				GitRepo: &aci.GitRepoVolume{
+					Directory:  v.GitRepo.Directory,
+					Repository: v.GitRepo.Repository,
+					Revision:   v.GitRepo.Revision,
+				},
+			})
+			continue
+		}
+	}
+
+	return volumes, nil
+}
+
+func (p *ACIProvider) getContainers(pod *v1.Pod) ([]aci.Container, error) {
+	containers := make([]aci.Container, 0, len(pod.Spec.Containers))
+	for _, container := range pod.Spec.Containers {
+		c := aci.Container{
+			Name: container.Name,
+			ContainerProperties: aci.ContainerProperties{
+				Image:   container.Image,
+				Command: append(container.Command, container.Args...),
+				Ports:   make([]aci.ContainerPort, 0, len(container.Ports)),
+			},
+		}
+
+		for _, p := range container.Ports {
+			c.Ports = append(c.Ports, aci.ContainerPort{
+				Port:     p.ContainerPort,
+				Protocol: getProtocol(p.Protocol),
+			})
+		}
+
+		c.VolumeMounts = make([]aci.VolumeMount, 0, len(container.VolumeMounts))
+		for _, v := range container.VolumeMounts {
+			c.VolumeMounts = append(c.VolumeMounts, aci.VolumeMount{
+				Name:      v.Name,
+				MountPath: v.MountPath,
+				ReadOnly:  v.ReadOnly,
+			})
+		}
+
+		c.EnvironmentVariables = make([]aci.EnvironmentVariable, 0, len(container.Env))
+		for _, e := range container.Env {
+			c.EnvironmentVariables = append(c.EnvironmentVariables, aci.EnvironmentVariable{
+				Name:  e.Name,
+				Value: e.Value,
+			})
+		}
+
+		cpuLimit := float64(container.Resources.Limits.Cpu().Value())
+		memoryLimit := float64(container.Resources.Limits.Memory().Value()) / 1000000000.00
+		cpuRequest := float64(container.Resources.Requests.Cpu().Value())
+		memoryRequest := float64(container.Resources.Requests.Memory().Value()) / 1000000000.00
+
+		c.Resources = aci.ResourceRequirements{
+			Limits: aci.ResourceLimits{
+				CPU:        cpuLimit,
+				MemoryInGB: memoryLimit,
+			},
+			Requests: aci.ResourceRequests{
+				CPU:        cpuRequest,
+				MemoryInGB: memoryRequest,
+			},
+		}
+
+		containers = append(containers, c)
+	}
+	return containers, nil
+}
+
+func getProtocol(pro v1.Protocol) aci.ContainerNetworkProtocol {
+	switch pro {
+	case v1.ProtocolUDP:
+		return aci.ContainerNetworkProtocolUDP
+	default:
+		return aci.ContainerNetworkProtocolTCP
+	}
 }
