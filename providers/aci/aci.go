@@ -59,33 +59,7 @@ func NewACIProvider(config string, operatingSystem string, image string, deploym
 	var p ACIProvider
 	var err error
 
-	var azAuth *client.Authentication
-
-	if authFilepath := os.Getenv("AZURE_AUTH_LOCATION"); authFilepath != "" {
-		auth, err := client.NewAuthenticationFromFile(authFilepath)
-		if err != nil {
-			return nil, err
-		}
-
-		azAuth = auth
-	}
-
-	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
-		azAuth.ClientID = clientID
-	}
-
-	if clientSecret := os.Getenv("AZURE_CLIENT_SECRET"); clientSecret != "" {
-		azAuth.ClientSecret = clientSecret
-	}
-
-	if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
-		azAuth.TenantID = tenantID
-	}
-
-	if subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID"); subscriptionID != "" {
-		azAuth.SubscriptionID = subscriptionID
-	}
-	p.aciClient, err = aci.NewClient(azAuth)
+	p.aciClient, err = CreateACIClient()
 	if err != nil {
 		return nil, err
 	}
@@ -157,6 +131,41 @@ func NewACIProvider(config string, operatingSystem string, image string, deploym
 	}
 
 	return &p, err
+}
+
+func CreateACIClient() (*aci.Client, error) {
+	var azAuth *client.Authentication
+
+	if authFilepath := os.Getenv("AZURE_AUTH_LOCATION"); authFilepath != "" {
+		auth, err := client.NewAuthenticationFromFile(authFilepath)
+		if err != nil {
+			return nil, err
+		}
+
+		azAuth = auth
+	}
+
+	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
+		azAuth.ClientID = clientID
+	}
+
+	if clientSecret := os.Getenv("AZURE_CLIENT_SECRET"); clientSecret != "" {
+		azAuth.ClientSecret = clientSecret
+	}
+
+	if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
+		azAuth.TenantID = tenantID
+	}
+
+	if subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID"); subscriptionID != "" {
+		azAuth.SubscriptionID = subscriptionID
+	}
+	client, err := aci.NewClient(azAuth)
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }
 
 func (p *ACIProvider) CreateComputeInstance(name string, work string) error {
@@ -241,7 +250,7 @@ func GetSingleImageContainerGroup(image string, region string, operatingSystem s
 }
 
 func (p *ACIProvider) GetComputeInstance(namespace, name string) (*aci.ContainerGroup, error) {
-	cg, err, _:= p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, name))
+	cg, err, _ := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, name))
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +260,7 @@ func (p *ACIProvider) GetComputeInstance(namespace, name string) (*aci.Container
 
 func (p *ACIProvider) GetContainerLogs(namespace, podName, containerName string, tail int) (string, error) {
 	logContent := ""
-	cg, err, _:= p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, podName))
+	cg, err, _ := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, podName))
 	if err != nil {
 		return logContent, err
 	}
