@@ -21,7 +21,7 @@ import (
 
 const (
 	WorkEnvVarName = "KIRIX_WORK"
-	AzureInfoFile  = "azureInfo.json"
+	AzureInfoFile  = "./azureInfo.json"
 )
 
 type ACIProvider struct {
