@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -146,7 +147,8 @@ func CreateACIClient() (*aci.Client, error) {
 		azAuth = auth
 	} else {
 		//Use default Azure endpoints
-		auth, err := client.NewAuthenticationFromFile(AzureInfoFile)
+		absPath, _ := filepath.Abs(AzureInfoFile)
+		auth, err := client.NewAuthenticationFromFile(absPath)
 		if err != nil {
 			return nil, err
 		}
