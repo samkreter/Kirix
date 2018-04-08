@@ -133,9 +133,6 @@ func NewACIProvider(config string, operatingSystem string, image string, deploym
 }
 
 func (p *ACIProvider) CreateComputeInstance(name string, work string) error {
-	fmt.Println("B: ", p.workerInstance.Containers[0].EnvironmentVariables)
-	p.AddWork(work)
-	fmt.Println("A: ", p.workerInstance.Containers[0].EnvironmentVariables)
 
 	_, err := p.aciClient.CreateContainerGroup(
 		p.resourceGroup,
@@ -373,6 +370,23 @@ func getContainers(pod *v1.Pod) ([]aci.Container, error) {
 		memoryLimit := float64(container.Resources.Limits.Memory().Value()) / 1000000000.00
 		cpuRequest := float64(container.Resources.Requests.Cpu().Value())
 		memoryRequest := float64(container.Resources.Requests.Memory().Value()) / 1000000000.00
+
+		fmt.Println("CPUL: ", cpuLimit, "meml: ", memoryLimit, "cpuR:", cpuRequest, "memR:", memoryRequest)
+		if cpuLimit == 0 {
+			cpuLimit = 1
+		}
+
+		if memoryLimit == 0 {
+			memoryLimit = 1
+		}
+
+		if cpuRequest == 0 {
+			cpuRequest = 1
+		}
+
+		if memoryRequest == 0 {
+			memoryRequest = 1
+		}
 
 		c.Resources = aci.ResourceRequirements{
 			Limits: aci.ResourceLimits{
