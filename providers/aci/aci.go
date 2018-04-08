@@ -137,12 +137,22 @@ func NewACIProvider(config string, operatingSystem string, image string, deploym
 func CreateACIClient() (*aci.Client, error) {
 	var azAuth *client.Authentication
 
-	auth, err := client.NewAuthenticationFromFile(AzureInfoFile)
-	if err != nil {
-		return nil, err
-	}
+	if authFilepath := os.Getenv("AZURE_AUTH_LOCATION"); authFilepath != "" {
+		auth, err := client.NewAuthenticationFromFile(authFilepath)
+		if err != nil {
+			return nil, err
+		}
 
-	azAuth = auth
+		azAuth = auth
+	} else {
+		//Use default Azure endpoints
+		auth, err := client.NewAuthenticationFromFile(AzureInfoFile)
+		if err != nil {
+			return nil, err
+		}
+
+		azAuth = auth
+	}
 
 	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
 		azAuth.ClientID = clientID
