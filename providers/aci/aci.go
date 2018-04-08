@@ -260,6 +260,7 @@ func (p *ACIProvider) GetCurrentComputeInstances() ([]aci.ContainerGroup, error)
 func GetACIFromK8sPod(pod *v1.Pod, region string, operatingSystem string) (*aci.ContainerGroup, error) {
 	var containerGroup aci.ContainerGroup
 	containerGroup.Location = region
+	containerGroup.Name = pod.Name
 	containerGroup.RestartPolicy = aci.ContainerGroupRestartPolicy(pod.Spec.RestartPolicy)
 	containerGroup.ContainerGroupProperties.OsType = aci.OperatingSystemTypes(operatingSystem)
 
@@ -298,17 +299,6 @@ func GetACIFromK8sPod(pod *v1.Pod, region string, operatingSystem string) (*aci.
 			Ports: ports,
 			Type:  "Public",
 		}
-	}
-
-	podUID := string(pod.UID)
-	podCreationTimestamp := pod.CreationTimestamp.String()
-	containerGroup.Tags = map[string]string{
-		"PodName":           pod.Name,
-		"ClusterName":       pod.ClusterName,
-		"NodeName":          pod.Spec.NodeName,
-		"Namespace":         pod.Namespace,
-		"UID":               podUID,
-		"CreationTimestamp": podCreationTimestamp,
 	}
 
 	return &containerGroup, err
