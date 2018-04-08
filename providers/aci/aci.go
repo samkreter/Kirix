@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	client "github.com/virtual-kubelet/virtual-kubelet/providers/azure/client"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/azure/client/aci"
 	"k8s.io/api/core/v1"
 )
@@ -58,7 +59,33 @@ func NewACIProvider(config string, operatingSystem string, image string, deploym
 	var p ACIProvider
 	var err error
 
-	p.aciClient, err = aci.NewClient()
+	var azAuth *client.Authentication
+
+	if authFilepath := os.Getenv("AZURE_AUTH_LOCATION"); authFilepath != "" {
+		auth, err := client.NewAuthenticationFromFile(authFilepath)
+		if err != nil {
+			return nil, err
+		}
+
+		azAuth = auth
+	}
+
+	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
+		azAuth.ClientID = clientID
+	}
+
+	if clientSecret := os.Getenv("AZURE_CLIENT_SECRET"); clientSecret != "" {
+		azAuth.ClientSecret = clientSecret
+	}
+
+	if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
+		azAuth.TenantID = tenantID
+	}
+
+	if subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID"); subscriptionID != "" {
+		azAuth.SubscriptionID = subscriptionID
+	}
+	p.aciClient, err = aci.NewClient(azAuth)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +241,7 @@ func GetSingleImageContainerGroup(image string, region string, operatingSystem s
 }
 
 func (p *ACIProvider) GetComputeInstance(namespace, name string) (*aci.ContainerGroup, error) {
-	cg, err := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, name))
+	cg, err, _:= p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, name))
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +251,7 @@ func (p *ACIProvider) GetComputeInstance(namespace, name string) (*aci.Container
 
 func (p *ACIProvider) GetContainerLogs(namespace, podName, containerName string, tail int) (string, error) {
 	logContent := ""
-	cg, err := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, podName))
+	cg, err, _:= p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, podName))
 	if err != nil {
 		return logContent, err
 	}
