@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -146,14 +145,7 @@ func CreateACIClient() (*aci.Client, error) {
 
 		azAuth = auth
 	} else {
-		//Use default Azure endpoints
-		absPath, _ := filepath.Abs(AzureInfoFile)
-		auth, err := client.NewAuthenticationFromFile(absPath)
-		if err != nil {
-			return nil, err
-		}
-
-		azAuth = auth
+		azAuth = GetDefaultAzureAuthentication()
 	}
 
 	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
@@ -171,12 +163,31 @@ func CreateACIClient() (*aci.Client, error) {
 	if subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID"); subscriptionID != "" {
 		azAuth.SubscriptionID = subscriptionID
 	}
+
+	if azAuth.TenantID == "" ||
+		azAuth.SubscriptionID == "" ||
+		azAuth.ClientSecret == "" ||
+		azAuth.ClientID == "" {
+		return nil, errors.New("Must have AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID set.")
+	}
+
 	client, err := aci.NewClient(azAuth)
 	if err != nil {
 		return nil, err
 	}
 
 	return client, nil
+}
+
+func GetDefaultAzureAuthentication() *client.Authentication {
+	return &client.Authentication{
+		ActiveDirectoryEndpoint: "https://login.microsoftonline.com",
+		ResourceManagerEndpoint: "https://management.azure.com/",
+		GraphResourceID:         "https://graph.windows.net/",
+		SQLManagementEndpoint:   "https://management.core.windows.net:8443/",
+		GalleryEndpoint:         "https://gallery.azure.com/",
+		ManagementEndpoint:      "https://management.core.windows.net/",
+	}
 }
 
 func (p *ACIProvider) CreateComputeInstance(name string, work string) error {
