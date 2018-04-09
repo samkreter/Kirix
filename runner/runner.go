@@ -94,7 +94,12 @@ func SourceWatcher(source Source, workChan chan string) {
 }
 
 func (r *Runner) Run() error {
-	t, _ := r.Provider.GetComputeInstance("test2")
+	err := r.Provider.CreateComputeInstance("sammy1", "test")
+	if err != nil {
+		return err
+	}
+
+	t, _ := r.Provider.GetComputeInstance("sammy1")
 	fmt.Println(t)
 	return nil
 	workChan := make(chan string, WorkChanBufferSize)
@@ -126,7 +131,6 @@ func (r *Runner) Run() error {
 }
 
 func (r *Runner) GarbageCollector() {
-
 	computeStaleTime := time.Duration(time.Minute * 5)
 
 	lastChangeTime := time.Time{}

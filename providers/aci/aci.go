@@ -217,24 +217,9 @@ func (p *ACIProvider) GetComputeInstance(name string) (*types.ComputeInstance, e
 		return nil, err
 	}
 
-	fmt.Println(cg.ContainerGroupProperties.InstanceView)
-
-	var currState string
-
-	switch cg.ContainerGroupProperties.InstanceView.State {
-	case "Running":
-		currState = types.StateInProgress
-	case "Succeeded":
-		currState = types.StateComplete
-	case "Failed":
-		currState = types.StateComplete
-	default:
-		currState = types.StateInProgress
-	}
-
 	return &types.ComputeInstance{
 		Name:  cg.Name,
-		State: currState,
+		State: ConvertState(cg.InstanceView.State),
 	}, nil
 }
 
@@ -244,18 +229,30 @@ func (p *ACIProvider) GetCurrentComputeInstances() ([]types.ComputeInstance, err
 		return nil, err
 	}
 
-	fmt.Println(cgs)
-
 	computeInstances := make([]types.ComputeInstance, len(cgs.Value))
 
 	for idx, cg := range cgs.Value {
+
 		computeInstances[idx] = types.ComputeInstance{
 			Name:  cg.Name,
-			State: types.StateInProgress, //cg.InstanceView.State,
+			State: ConvertState(cg.InstanceView.State),
 		}
 	}
 
 	return computeInstances, nil
+}
+
+func ConvertState(state string) string {
+	switch state {
+	case "Running":
+		return types.StateInProgress
+	case "Succeeded":
+		return types.StateComplete
+	case "Failed":
+		return types.StateComplete
+	default:
+		return types.StateInProgress
+	}
 }
 
 func (p *ACIProvider) AddWorkToWorkerInstance(work string) error {
