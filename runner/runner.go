@@ -94,7 +94,9 @@ func SourceWatcher(source Source, workChan chan string) {
 }
 
 func (r *Runner) Run() error {
-
+	t, _ := r.Provider.GetComputeInstance("test2")
+	fmt.Println(t)
+	return nil
 	workChan := make(chan string, WorkChanBufferSize)
 
 	// Delete unneeded Compute Instnaces

@@ -217,9 +217,24 @@ func (p *ACIProvider) GetComputeInstance(name string) (*types.ComputeInstance, e
 		return nil, err
 	}
 
+	fmt.Println(cg.ContainerGroupProperties.InstanceView)
+
+	var currState string
+
+	switch cg.ContainerGroupProperties.InstanceView.State {
+	case "Running":
+		currState = types.StateInProgress
+	case "Succeeded":
+		currState = types.StateComplete
+	case "Failed":
+		currState = types.StateComplete
+	default:
+		currState = types.StateInProgress
+	}
+
 	return &types.ComputeInstance{
 		Name:  cg.Name,
-		State: types.StateInProgress, //cg.InstanceView.State,
+		State: currState,
 	}, nil
 }
 
