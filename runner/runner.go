@@ -3,7 +3,9 @@ package runner
 import (
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
+	"time"
 
 	"github.com/samkreter/Kirix/providers/aci"
 	"github.com/samkreter/Kirix/sources/serviceBus"
@@ -96,7 +98,7 @@ func (r *Runner) Run() error {
 	workChan := make(chan string, WorkChanBufferSize)
 
 	// Delete unneeded Compute Instnaces
-	//go r.GarbageCollector()
+	go r.GarbageCollector()
 
 	// Create a watcher for each source
 	for _, source := range r.Sources {
@@ -121,27 +123,36 @@ func (r *Runner) Run() error {
 	return nil
 }
 
-// func (r *Runner) GarbageCollector(timeout int) {
-// 	lastChangeTime := time.Time{}
-// 	lastUnused := math.MaxInt64
+func (r *Runner) GarbageCollector() {
 
-// 	for {
-// 		freeCompute, err := r.GetFreeComputeInstances()
-// 		if err != nil {
-// 			log.Printf("Get Free Compute Error: %s", err)
-// 		}
+	computeStaleTime := time.Duration(time.Minute * 5)
 
-// 		numFree := len(freeCompute)
+	lastChangeTime := time.Time{}
+	currCount := math.MaxInt64
 
-// 		if numFree >= lastUnused {
-// 			// Check if at timeout
-// 			if lastChangeTime.Sub(time.Now()) >
-// 		} else if numFree > 0 && numFree < lastUnused{
-// 			lastUnused := len(freeCompute)
-// 			lastChangeTime = time.Now()
-// 		}
-// 	}
-// }
+	for {
+		freeCompute, err := r.GetFreeComputeInstances()
+		if err != nil {
+			log.Printf("Get Free Compute Error: %s", err)
+		}
+
+		numFree := len(freeCompute)
+
+		if numFree == 0 || currCount == 0 {
+			currCount = math.MaxInt64
+		} else if numFree >= currCount {
+			if time.Since(lastChangeTime) > computeStaleTime {
+				err := r.Provider.DeleteComputeInstance(freeCompute[len(freeCompute)-1].Name)
+				if err != nil {
+					log.Printf("Delete compute instance error: %s", err)
+				}
+			}
+		} else {
+			currCount = numFree
+			lastChangeTime = time.Now()
+		}
+	}
+}
 
 func getUniqueWorkerName() string {
 	randChars := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789")
