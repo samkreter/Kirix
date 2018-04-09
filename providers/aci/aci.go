@@ -1,9 +1,9 @@
 package aci
 
 /* TODO:
+- Fix instance view state
 - Add passing in command
 - Add image pull secrets
-- Update work with put, check status of container for work finished
 */
 
 import (
@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	. "github.com/samkreter/Kirix/types"
+	types "github.com/samkreter/Kirix/types"
 	client "github.com/virtual-kubelet/virtual-kubelet/providers/azure/client"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/azure/client/aci"
 	"k8s.io/api/core/v1"
@@ -211,32 +211,32 @@ func (p *ACIProvider) SendWork(name string) error {
 	return fmt.Errorf("Not Implemented")
 }
 
-func (p *ACIProvider) GetComputeInstance(name string) (*ComputeInstance, error) {
+func (p *ACIProvider) GetComputeInstance(name string) (*types.ComputeInstance, error) {
 	cg, err, _ := p.aciClient.GetContainerGroup(p.resourceGroup, name)
 	if err != nil {
 		return nil, err
 	}
 
-	return &ComputeInstance{
+	return &types.ComputeInstance{
 		Name:  cg.Name,
-		State: cg.InstanceView.State,
+		State: types.StateInProgress, //cg.InstanceView.State,
 	}, nil
 }
 
-func (p *ACIProvider) GetCurrentComputeInstances() ([]ComputeInstance, error) {
+func (p *ACIProvider) GetCurrentComputeInstances() ([]types.ComputeInstance, error) {
 	cgs, err := p.aciClient.ListContainerGroups(p.resourceGroup)
 	if err != nil {
 		return nil, err
 	}
 
-	computeInstances := make([]ComputeInstance, len(cgs.Value))
+	fmt.Println(cgs)
+
+	computeInstances := make([]types.ComputeInstance, len(cgs.Value))
 
 	for idx, cg := range cgs.Value {
-		fmt.Println(cg.InstanceView)
-
-		computeInstances[idx] = ComputeInstance{
+		computeInstances[idx] = types.ComputeInstance{
 			Name:  cg.Name,
-			State: cg.InstanceView.State,
+			State: types.StateInProgress, //cg.InstanceView.State,
 		}
 	}
 

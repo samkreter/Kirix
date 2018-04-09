@@ -3,10 +3,15 @@ package runner
 import (
 	"fmt"
 	"log"
+	"math/rand"
 
 	"github.com/samkreter/Kirix/providers/aci"
 	"github.com/samkreter/Kirix/sources/serviceBus"
-	. "github.com/samkreter/Kirix/types"
+	types "github.com/samkreter/Kirix/types"
+)
+
+var (
+	WorkChanBufferSize = 100
 )
 
 type Source interface {
@@ -23,9 +28,9 @@ type Provider interface {
 
 	SendWork(name string) error
 
-	GetCurrentComputeInstances() ([]ComputeInstance, error)
+	GetCurrentComputeInstances() ([]types.ComputeInstance, error)
 
-	GetComputeInstance(name string) (*ComputeInstance, error)
+	GetComputeInstance(name string) (*types.ComputeInstance, error)
 
 	DeleteComputeInstance(name string) error
 }
@@ -74,20 +79,91 @@ func New(sources []string, sourceConfig string, provider string) (*Runner, error
 	return &runner, nil
 }
 
+func SourceWatcher(source Source, workChan chan string) {
+	for {
+		work, err := source.GetWork()
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		workChan <- work
+	}
+}
+
 func (r *Runner) Run() error {
-	fmt.Println("running")
 
-	//Created
-	err := r.Provider.CreateComputeInstance("sam-test-1", "testwork")
-	if err != nil {
-		log.Fatal("Error in creation: ", err)
+	workChan := make(chan string, WorkChanBufferSize)
+
+	// Delete unneeded Compute Instnaces
+	//go r.GarbageCollector()
+
+	// Create a watcher for each source
+	for _, source := range r.Sources {
+		go SourceWatcher(source, workChan)
 	}
 
-	//Delete
-	err = r.Provider.DeleteComputeInstance("sam-test-1")
-	if err != nil {
-		log.Fatal("Error in creation: ", err)
+	for {
+		work := <-workChan
+		freeComputes, err := r.GetFreeComputeInstances()
+		if err != nil {
+			return fmt.Errorf("Get Free Compute Error: %s", err)
+		}
+
+		// Get the first availble worker otherwise create a new worker
+		if len(freeComputes) > 0 {
+			r.Provider.CreateComputeInstance(freeComputes[0].Name, work)
+		} else {
+			r.Provider.CreateComputeInstance(getUniqueWorkerName(), work)
+		}
 	}
 
-	return fmt.Errorf("Runner not implemneted.")
+	return nil
+}
+
+// func (r *Runner) GarbageCollector(timeout int) {
+// 	lastChangeTime := time.Time{}
+// 	lastUnused := math.MaxInt64
+
+// 	for {
+// 		freeCompute, err := r.GetFreeComputeInstances()
+// 		if err != nil {
+// 			log.Printf("Get Free Compute Error: %s", err)
+// 		}
+
+// 		numFree := len(freeCompute)
+
+// 		if numFree >= lastUnused {
+// 			// Check if at timeout
+// 			if lastChangeTime.Sub(time.Now()) >
+// 		} else if numFree > 0 && numFree < lastUnused{
+// 			lastUnused := len(freeCompute)
+// 			lastChangeTime = time.Now()
+// 		}
+// 	}
+// }
+
+func getUniqueWorkerName() string {
+	randChars := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789")
+	b := make([]rune, 7)
+	for i := range b {
+		b[i] = randChars[rand.Intn(len(randChars))]
+	}
+	return "kirix-worker-" + string(b)
+}
+
+func (r *Runner) GetFreeComputeInstances() ([]types.ComputeInstance, error) {
+	currComputeInstances, err := r.Provider.GetCurrentComputeInstances()
+	if err != nil {
+		return nil, err
+	}
+
+	var freeComputeInstances []types.ComputeInstance
+	for _, computeInstance := range currComputeInstances {
+		if computeInstance.State == types.StateComplete {
+			freeComputeInstances = append(freeComputeInstances, computeInstance)
+		}
+	}
+
+	return freeComputeInstances, nil
 }
