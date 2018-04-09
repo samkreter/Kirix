@@ -6,16 +6,26 @@ import (
 
 	"github.com/samkreter/Kirix/providers/aci"
 	"github.com/samkreter/Kirix/sources/serviceBus"
+	. "github.com/samkreter/Kirix/types"
 )
 
 type Source interface {
 	GetWork() (string, error)
 }
 
+type Compute interface {
+	GetState() string
+	GetName() string
+}
+
 type Provider interface {
 	CreateComputeInstance(name string, work string) error
 
 	SendWork(name string) error
+
+	GetCurrentComputeInstances() ([]ComputeInstance, error)
+
+	GetComputeInstance(name string) (*ComputeInstance, error)
 
 	DeleteComputeInstance(name string) error
 }
@@ -50,7 +60,7 @@ func New(sources []string, sourceConfig string, provider string) (*Runner, error
 	switch provider {
 	case "aci":
 		// TODO: set up config
-		p, err := aci.NewACIProvider("", "Linux", "nginx", "")
+		p, err := aci.NewACIProvider("", "Linux", "pskreter/test", "")
 		if err != nil {
 			return &Runner{}, err
 		}
@@ -68,15 +78,16 @@ func (r *Runner) Run() error {
 	fmt.Println("running")
 
 	//Created
-	// err := r.Provider.CreateComputeInstance("sam-test-1", "testwork")
-	// if err != nil {
-	// 	log.Fatal("Error in creation: ", err)
-	// }
-
-	//Delete
-	err := r.Provider.DeleteComputeInstance("sam-test-1")
+	err := r.Provider.CreateComputeInstance("sam-test-1", "testwork")
 	if err != nil {
 		log.Fatal("Error in creation: ", err)
 	}
+
+	//Delete
+	err = r.Provider.DeleteComputeInstance("sam-test-1")
+	if err != nil {
+		log.Fatal("Error in creation: ", err)
+	}
+
 	return fmt.Errorf("Runner not implemneted.")
 }

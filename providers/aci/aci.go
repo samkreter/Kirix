@@ -9,11 +9,10 @@ package aci
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
-	"time"
 
+	. "github.com/samkreter/Kirix/types"
 	client "github.com/virtual-kubelet/virtual-kubelet/providers/azure/client"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/azure/client/aci"
 	"k8s.io/api/core/v1"
@@ -191,7 +190,9 @@ func GetDefaultAzureAuthentication() *client.Authentication {
 }
 
 func (p *ACIProvider) CreateComputeInstance(name string, work string) error {
+	p.AddWorkToWorkerInstance(work)
 
+	fmt.Printf("Createing ACI: %s\n", name)
 	_, err := p.aciClient.CreateContainerGroup(
 		p.resourceGroup,
 		name,
@@ -202,6 +203,7 @@ func (p *ACIProvider) CreateComputeInstance(name string, work string) error {
 }
 
 func (p *ACIProvider) DeleteComputeInstance(name string) error {
+	fmt.Printf("Deleting ACI: %s\n", name)
 	return p.aciClient.DeleteContainerGroup(p.resourceGroup, name)
 }
 
@@ -209,7 +211,39 @@ func (p *ACIProvider) SendWork(name string) error {
 	return fmt.Errorf("Not Implemented")
 }
 
-func (p *ACIProvider) AddWork(work string) error {
+func (p *ACIProvider) GetComputeInstance(name string) (*ComputeInstance, error) {
+	cg, err, _ := p.aciClient.GetContainerGroup(p.resourceGroup, name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ComputeInstance{
+		Name:  cg.Name,
+		State: cg.InstanceView.State,
+	}, nil
+}
+
+func (p *ACIProvider) GetCurrentComputeInstances() ([]ComputeInstance, error) {
+	cgs, err := p.aciClient.ListContainerGroups(p.resourceGroup)
+	if err != nil {
+		return nil, err
+	}
+
+	computeInstances := make([]ComputeInstance, len(cgs.Value))
+
+	for idx, cg := range cgs.Value {
+		fmt.Println(cg.InstanceView)
+
+		computeInstances[idx] = ComputeInstance{
+			Name:  cg.Name,
+			State: cg.InstanceView.State,
+		}
+	}
+
+	return computeInstances, nil
+}
+
+func (p *ACIProvider) AddWorkToWorkerInstance(work string) error {
 	// Kirix Work Env is already set up
 	for idx, container := range p.workerInstance.Containers {
 		for envIdx, envVar := range container.EnvironmentVariables {
@@ -269,47 +303,6 @@ func GetSingleImageContainerGroup(image string, region string, operatingSystem s
 	// }
 
 	return &containerGroup, nil
-}
-
-func (p *ACIProvider) GetComputeInstance(namespace, name string) (*aci.ContainerGroup, error) {
-	cg, err, _ := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, name))
-	if err != nil {
-		return nil, err
-	}
-
-	return cg, nil
-}
-
-func (p *ACIProvider) GetContainerLogs(namespace, podName, containerName string, tail int) (string, error) {
-	logContent := ""
-	cg, err, _ := p.aciClient.GetContainerGroup(p.resourceGroup, fmt.Sprintf("%s-%s", namespace, podName))
-	if err != nil {
-		return logContent, err
-	}
-
-	// get logs from cg
-	retry := 10
-	for i := 0; i < retry; i++ {
-		cLogs, err := p.aciClient.GetContainerLogs(p.resourceGroup, cg.Name, containerName, tail)
-		if err != nil {
-			log.Println(err)
-			time.Sleep(5000 * time.Millisecond)
-		} else {
-			logContent = cLogs.Content
-			break
-		}
-	}
-
-	return logContent, err
-}
-
-func (p *ACIProvider) GetCurrentComputeInstances() ([]aci.ContainerGroup, error) {
-	cgs, err := p.aciClient.ListContainerGroups(p.resourceGroup)
-	if err != nil {
-		return nil, err
-	}
-
-	return cgs.Value, nil
 }
 
 func GetACIFromK8sPod(pod *v1.Pod, region string, operatingSystem string) (*aci.ContainerGroup, error) {

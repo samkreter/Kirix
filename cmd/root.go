@@ -67,11 +67,4 @@ func initConfig() {
 
 		//Figure out what that means.
 	}
-
-	viper.AutomaticEnv()
-
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
-	}
 }
